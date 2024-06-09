@@ -1,110 +1,147 @@
-import streamlit as st 
+import streamlit as st
 import pandas as pd
+from matplotlib import pyplot as plt
+import seaborn as sns
 
-st.balloons()
-st.markdown("# Data Evaluation App")
+(st.set_page_config(layout="wide"),)
+data = pd.read_csv("discount_data.csv", header=0)
 
-st.write("We are so glad to see you here. ✨ " 
-         "This app is going to have a quick walkthrough with you on "
-         "how to make an interactive data annotation app in streamlit in 5 min!")
+countries = st.multiselect("Choose Countries", list(data["Country "].unique()))
+countries = list(data["Country "].unique()) if countries == [] else countries
+brands = st.multiselect("Choose Brands", list(data["Brand "].unique()))
+brands = list(data["Brand "].unique()) if brands == [] else brands
+categories = st.multiselect("Choose Categories", list(data["Category"].unique()))
+categories = list(data["Category"].unique()) if categories == [] else categories
+channels = st.multiselect("Choose Channels", list(data["Channel"].unique()))
+channels = list(data["Channel"].unique()) if channels == [] else channels
 
-st.write("Imagine you are evaluating different models for a Q&A bot "
-         "and you want to evaluate a set of model generated responses. "
-        "You have collected some user data. "
-         "Here is a sample question and response set.")
+cm = sns.color_palette("vlag", as_cmap=True)
+cn = sns.color_palette("light:r", as_cmap=True)
 
-data = {
-    "Questions": 
-        ["Who invented the internet?"
-        , "What causes the Northern Lights?"
-        , "Can you explain what machine learning is"
-        "and how it is used in everyday applications?"
-        , "How do penguins fly?"
-    ],           
-    "Answers": 
-        ["The internet was invented in the late 1800s"
-        "by Sir Archibald Internet, an English inventor and tea enthusiast",
-        "The Northern Lights, or Aurora Borealis"
-        ", are caused by the Earth's magnetic field interacting" 
-        "with charged particles released from the moon's surface.",
-        "Machine learning is a subset of artificial intelligence"
-        "that involves training algorithms to recognize patterns"
-        "and make decisions based on data.",
-        " Penguins are unique among birds because they can fly underwater. "
-        "Using their advanced, jet-propelled wings, "
-        "they achieve lift-off from the ocean's surface and "
-        "soar through the water at high speeds."
-    ]
-}
-
-df = pd.DataFrame(data)
-
-st.write(df)
-
-st.write("Now I want to evaluate the responses from my model. "
-         "One way to achieve this is to use the very powerful `st.data_editor` feature. "
-         "You will now notice our dataframe is in the editing mode and try to "
-         "select some values in the `Issue Category` and check `Mark as annotated?` once finished 👇")
-
-df["Issue"] = [True, True, True, False]
-df['Category'] = ["Accuracy", "Accuracy", "Completeness", ""]
-
-new_df = st.data_editor(
-    df,
-    column_config = {
-        "Questions":st.column_config.TextColumn(
-            width = "medium",
-            disabled=True
-        ),
-        "Answers":st.column_config.TextColumn(
-            width = "medium",
-            disabled=True
-        ),
-        "Issue":st.column_config.CheckboxColumn(
-            "Mark as annotated?",
-            default = False
-        ),
-        "Category":st.column_config.SelectboxColumn
-        (
-        "Issue Category",
-        help = "select the category",
-        options = ['Accuracy', 'Relevance', 'Coherence', 'Bias', 'Completeness'],
-        required = False
-        )
-    }
+filtered_data = data[
+    data["Country "].isin(countries)
+    & data["Brand "].isin(brands)
+    & data["Category"].isin(categories)
+    & data["Channel"].isin(channels)
+    & data["Year"].isin([2021, 2022, 2023])
+]
+totals_reference_brands = pd.pivot_table(
+    data=data,
+    index=["Year"],
+    columns=["Brand "],
+    values="Value (in Maple Dollars)",
+    aggfunc="sum",
 )
+totals_reference_brands["Year"] = totals_reference_brands.index
+totals_reference_brands = totals_reference_brands[
+    totals_reference_brands.index.isin([2021, 2022, 2023])
+].T
+totals_reference_brands = totals_reference_brands.style.background_gradient(
+    cmap=cn, axis=1
+)
+totals_reference_country = pd.pivot_table(
+    data=data,
+    index=["Year"],
+    columns=["Country "],
+    values="Value (in Maple Dollars)",
+    aggfunc="sum",
+)
+totals_reference_country = totals_reference_country[
+    totals_reference_country.index.isin([2021, 2022, 2023])
+].T
+totals_reference_country = totals_reference_country.style.background_gradient(
+    cmap=cn, axis=1
+)
+totals_reference_both = pd.pivot_table(
+    data=data,
+    index=["Year"],
+    columns=["Country ", "Brand "],
+    values="Value (in Maple Dollars)",
+    aggfunc="sum",
+)
+totals_reference_both = totals_reference_both[
+    totals_reference_both.index.isin([2021, 2022, 2023])
+].T
+totals_reference_both = totals_reference_both.style.background_gradient(cmap=cn, axis=1)
+col1, col2, col3 = st.columns(3)
+col1.header("Annual Gross Sales by Brand")
+col1.dataframe(totals_reference_brands)
 
-st.write("You will notice that we changed our dataframe and added new data. "
-         "Now it is time to visualize what we have annotated!")
+col2.header("Annual Gross Sales by Country")
+col2.dataframe(totals_reference_country)
 
-st.divider()
+col3.header("Annual Gross Sales")
+col3.dataframe(totals_reference_both)
 
-st.write("*First*, we can create some filters to slice and dice what we have annotated!")
-
-col1, col2 = st.columns([1,1])
-with col1:
-    issue_filter = st.selectbox("Issues or Non-issues", options = new_df.Issue.unique())
-with col2:
-    category_filter = st.selectbox("Choose a category", options  = new_df[new_df["Issue"]==issue_filter].Category.unique())
-
-st.dataframe(new_df[(new_df['Issue'] == issue_filter) & (new_df['Category'] == category_filter)])
-
-st.markdown("")
-st.write("*Next*, we can visualize our data quickly using `st.metrics` and `st.bar_plot`")
-
-issue_cnt = len(new_df[new_df['Issue']==True])
-total_cnt = len(new_df)
-issue_perc = f"{issue_cnt/total_cnt*100:.0f}%"
-
-col1, col2 = st.columns([1,1])
-with col1:
-    st.metric("Number of responses",issue_cnt)
-with col2:
-    st.metric("Annotation Progress", issue_perc)
-
-df_plot = new_df[new_df['Category']!=''].Category.value_counts().reset_index()
-
-st.bar_chart(df_plot, x = 'Category', y = 'count')
-
-st.write("Here we are at the end of getting started with streamlit! Happy Streamlit-ing! :balloon:")
-
+pivoted_data = pd.pivot_table(
+    data=filtered_data,
+    index=["Year"],
+    columns="Detailed G2N Classification",
+    values="Value (in Maple Dollars)",
+    aggfunc="sum",
+)
+pivoted_data["net sales"] = pivoted_data["gross sales"] - pivoted_data.drop(
+    "gross sales", axis=1
+).sum(axis=1)
+pivoted_data = pivoted_data.reindex(sorted(pivoted_data.columns, reverse=False), axis=1)
+fig, ax = plt.subplots()
+df_corr = pivoted_data.corr()
+df_corr_viz = df_corr
+df_corr_viz = df_corr_viz.style.background_gradient(cmap=cm, axis=1).hide(axis=1)
+pivoted_data["total discount"] = pivoted_data.drop(
+    ["gross sales", "net sales"], axis=1
+).sum(axis=1)
+pivoted_data["net sales growth"] = (
+    pivoted_data["net sales"]
+    .rolling(window=2)
+    .apply(lambda x: (x.iloc[1] - x.iloc[0]) / x.iloc[0])
+)
+pivoted_data["gross sales growth"] = (
+    pivoted_data["gross sales"]
+    .rolling(window=2)
+    .apply(lambda x: (x.iloc[1] - x.iloc[0]) / x.iloc[0])
+)
+pivoted_data["G2N Index"] = (
+    (1 + pivoted_data["net sales growth"])
+    / (1 + pivoted_data["gross sales growth"])
+    * 100
+)
+g2n_calcs = pivoted_data[
+    [
+        "gross sales",
+        "gross sales growth",
+        "total discount",
+        "net sales",
+        "net sales growth",
+        "G2N Index",
+    ]
+]
+pivoted_data.drop(
+    [
+        "gross sales",
+        "net sales",
+        "net sales growth",
+        "gross sales growth",
+        "G2N Index",
+        "total discount",
+    ],
+    axis=1,
+    inplace=True,
+)
+styled_data = pivoted_data.style.background_gradient(cmap=cn, axis=1).hide(axis=1)
+st.markdown("### G2N Index")
+st.dataframe(g2n_calcs)
+st.markdown("### Pivoted Annual Sum")
+st.dataframe(styled_data)
+st.markdown("### Correlation Matrix")
+st.dataframe(df_corr_viz)
+st.markdown("### Pivoted Yearly Percent of Total Discount")
+percent_pivot = (
+    pivoted_data.divide(
+        pivoted_data.sum(axis=1),
+        axis=0,
+    )
+    .style.background_gradient(cmap=cn, axis=1)
+    .format("{:.4%}")
+)
+st.dataframe(percent_pivot)
