@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from matplotlib import pyplot as plt
 import seaborn as sns
+import plotly.express as px
 
 (st.set_page_config(layout="wide"),)
 
@@ -31,7 +32,9 @@ data.loc[
     data["Row Labels"].isin([2023009, 2023010, 2023011, 2023012, 2024001, 2024002]),
     "halves",
 ] = 6
-tab1, tab2, tab3 = st.tabs(["Overall Comp", "Breakdown", "ROI Comp"])
+tab1, tab2, tab3, tab4 = st.tabs(
+    ["Overall Comp", "Breakdown", "ROI Comp", "ROI Benchmark"]
+)
 cm = sns.color_palette("vlag", as_cmap=True)
 cn = sns.color_palette("light:r", as_cmap=True)
 
@@ -359,3 +362,133 @@ with tab3:
     )
     roi_comp["roi"] = roi_comp["net sales growth"] / roi_comp["total G2N"]
     st.dataframe(roi_comp)
+
+with tab4:
+    breakdown_tab4 = st.selectbox(
+        "Choose pivot dimension",
+        ["High Level G2N Classification", "Detailed G2N Classification"],
+        key=41,
+    )
+    # countries_tab4 = st.multiselect(
+    #     "Choose countries", list(data["Country "].unique()), key=31
+    # )
+    # countries_tab4 = (
+    #     list(data["Country "].unique()) if countries_tab4 == [] else countries_tab4
+    # )
+    # brands_tab4 = st.multiselect("Choose brands", list(data["Brand "].unique()), key=32)
+    # brands_tab4 = list(data["Brand "].unique()) if brands_tab4 == [] else brands_tab4
+    # categories_tab4 = st.multiselect(
+    #     "Choose categories", list(data["Category"].unique()), key=33
+    # )
+    # categories_tab4 = (
+    #     list(data["Category"].unique()) if categories_tab4 == [] else categories_tab4
+    # )
+    # channels_tab4 = st.multiselect(
+    #     "Choose channels", list(data["Channel"].unique()), key=34
+    # )
+    # channels_tab4 = (
+    #     list(data["Channel"].unique()) if channels_tab4 == [] else channels_tab4
+    # )
+    #
+    # data.groupby(["Country ", "Year ", "High Level G2N Classification"])["Value (in Maple Dollars)"].sum()
+    data_filtered = data[data["Year"].isin([2021, 2022, 2023])]
+
+    roi_pivot_main = pd.pivot_table(
+        data=data,
+        index=["Country "],
+        columns=[breakdown_tab4],
+        values="Value (in Maple Dollars)",
+        aggfunc="sum",
+    )
+    roi_pivot_main["total G2N"] = roi_pivot_main.drop(["gross sales"], axis=1).sum(
+        axis=1
+    )
+    roi_pivot_main["net sales"] = (
+        roi_pivot_main["gross sales"] - roi_pivot_main["total G2N"]
+    )
+    roi_pivot_main = roi_pivot_main.sort_values("net sales").reset_index()
+    st.dataframe(roi_pivot_main)
+    mean = roi_pivot_main["net sales"].mean()
+    std = roi_pivot_main["net sales"].std()
+    df = px.data.tips()
+    fig = px.histogram(roi_pivot_main, x="net sales")
+    st.plotly_chart(fig)
+    st.markdown(
+        "Average Total Net Sales for all countries is "
+        + str(mean)
+        + " with standard deviation "
+        + str(std)
+    )
+
+    st.markdown(
+        "This includes "
+        + str(
+            roi_pivot_main[
+                (roi_pivot_main["net sales"] <= (mean + std))
+                & (roi_pivot_main["net sales"] >= (mean - std))
+            ].shape[0]
+        )
+        + " countries"
+    )
+    st.dataframe(
+        roi_pivot_main[
+            (roi_pivot_main["net sales"] <= (mean + std))
+            & (roi_pivot_main["net sales"] >= (mean - std))
+        ]
+    )
+    median_index = roi_pivot_main.index[
+        roi_pivot_main["net sales"] == roi_pivot_main["net sales"].median()
+    ][0]
+    st.markdown("### Median 7 performers")
+    st.dataframe(roi_pivot_main.iloc[(median_index - 3) : (median_index + 4)])
+    country_list = roi_pivot_main.iloc[(median_index - 3) : (median_index + 4)][
+        "Country "
+    ]
+    roi_calc_main = {}
+    for _, value in country_list.items():
+        roi_calc_main[value] = pd.pivot_table(
+            data=data[data["Country "].isin([value])],
+            index=["Year"],
+            columns=[breakdown_tab4],
+            values="Value (in Maple Dollars)",
+            aggfunc="sum",
+        )
+    for dataframe in roi_calc_main:
+        roi_calc_main[dataframe]["net sales"] = roi_calc_main[dataframe][
+            "gross sales"
+        ] - roi_calc_main[dataframe].drop(["gross sales"], axis=1).sum(axis=1)
+        roi_calc_main[dataframe]["net sales growth"] = (
+            roi_calc_main[dataframe]["net sales"]
+            .rolling(window=2)
+            .apply(lambda x: (x.iloc[1] - x.iloc[0]))
+        )
+        for column in roi_calc_main[dataframe].columns:
+            if column not in ["net sales", "gross sales", "net sales growth"]:
+                roi_calc_main[dataframe][column + " ROI"] = (
+                    roi_calc_main[dataframe]["net sales growth"]
+                    / roi_calc_main[dataframe][column]
+                )
+        st.markdown("### ROI for country " + dataframe)
+        st.dataframe(roi_calc_main[dataframe])
+    roi_calc_average = {}
+    roi_column_names = set()
+    for dataframe in roi_calc_main:
+        roi_calc_average[dataframe] = roi_calc_main[dataframe].mean(axis=0)
+        roi_calc_average[dataframe] = (
+            roi_calc_average[dataframe].to_frame().rename(columns={0: dataframe})
+        )
+        roi_column_names.update(roi_calc_average[dataframe].index)
+        st.markdown("### Average ROI for country " + dataframe)
+        st.dataframe(roi_calc_average[dataframe])
+    roi_column_names = [x for x in roi_column_names if "ROI" in x]
+    roi_calc_average = [roi_calc_average[dataframe] for dataframe in roi_calc_average]
+    roi_calc_final = pd.concat(
+        [df for df in roi_calc_average],
+        axis=1,
+        keys=country_list,
+    )
+    roi_calc_final.columns = roi_calc_final.columns.droplevel(1)
+    st.markdown("### Average ROIs of Select Countries")
+    st.dataframe(roi_calc_final)
+    st.markdown("### Average ROIs")
+    st.dataframe(roi_calc_final.mean(axis=1))
