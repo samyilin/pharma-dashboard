@@ -369,6 +369,11 @@ with tab4:
         ["High Level G2N Classification", "Detailed G2N Classification"],
         key=41,
     )
+    pivot_index_tab4 = st.selectbox(
+        "Choose pivot index",
+        ["Country ", "Brand "],
+        key=42,
+    )
     # countries_tab4 = st.multiselect(
     #     "Choose countries", list(data["Country "].unique()), key=31
     # )
@@ -391,11 +396,12 @@ with tab4:
     # )
     #
     # data.groupby(["Country ", "Year ", "High Level G2N Classification"])["Value (in Maple Dollars)"].sum()
+
     data_filtered = data[data["Year"].isin([2021, 2022, 2023])]
 
     roi_pivot_main = pd.pivot_table(
         data=data,
-        index=["Country "],
+        index=[pivot_index_tab4],
         columns=[breakdown_tab4],
         values="Value (in Maple Dollars)",
         aggfunc="sum",
@@ -419,35 +425,37 @@ with tab4:
         + " with standard deviation "
         + str(std)
     )
+    roi_pivot_main.sort_values(by="net sales", inplace=True)
+    median_index = roi_pivot_main.shape[0] // 2 + 1
 
-    st.markdown(
-        "This includes "
-        + str(
-            roi_pivot_main[
-                (roi_pivot_main["net sales"] <= (mean + std))
-                & (roi_pivot_main["net sales"] >= (mean - std))
-            ].shape[0]
-        )
-        + " countries"
-    )
-    st.dataframe(
-        roi_pivot_main[
-            (roi_pivot_main["net sales"] <= (mean + std))
-            & (roi_pivot_main["net sales"] >= (mean - std))
-        ]
-    )
-    median_index = roi_pivot_main.index[
-        roi_pivot_main["net sales"] == roi_pivot_main["net sales"].median()
-    ][0]
+    # st.markdown(
+    #     "This includes "
+    #     + str(
+    #         roi_pivot_main[
+    #             (roi_pivot_main["net sales"] <= (mean + std))
+    #             & (roi_pivot_main["net sales"] >= (mean - std))
+    #         ].shape[0]
+    #     )
+    #     + " countries"
+    # )
+    # st.dataframe(
+    #     roi_pivot_main[
+    #         (roi_pivot_main["net sales"] <= (mean + std))
+    #         & (roi_pivot_main["net sales"] >= (mean - std))
+    #     ]
+    # )
+    # median_index = roi_pivot_main.index[
+    #     roi_pivot_main["net sales"] == roi_pivot_main["net sales"].median()
+    # ][0]
     st.markdown("### Median 7 performers")
     st.dataframe(roi_pivot_main.iloc[(median_index - 3) : (median_index + 4)])
     country_list = roi_pivot_main.iloc[(median_index - 3) : (median_index + 4)][
-        "Country "
+        pivot_index_tab4
     ]
     roi_calc_main = {}
     for _, value in country_list.items():
         roi_calc_main[value] = pd.pivot_table(
-            data=data[data["Country "].isin([value])],
+            data=data[data[pivot_index_tab4].isin([value])],
             index=["Year"],
             columns=[breakdown_tab4],
             values="Value (in Maple Dollars)",
